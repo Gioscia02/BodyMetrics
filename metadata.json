@@ -1,0 +1,7 @@
+{
+  "name": "BodyMetrics",
+  "description": "A modern physical progress tracker using React, Tailwind, and Firebase.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
