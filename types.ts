@@ -12,6 +12,9 @@ export interface MeasurementInput {
 
 export interface UserProfile {
   avatarBase64?: string;
+  height?: number; // in cm
+  gender?: 'male' | 'female';
+  birthDate?: string; // YYYY-MM-DD
 }
 
 export interface GroupedMeasurement {

@@ -10,6 +10,7 @@ import {
   deleteDoc,
   updateDoc 
 } from "firebase/firestore";
+import { UserProfile } from "../types";
 
 const firebaseConfig = {
     apiKey: "AIzaSyByfIi_FMkBbra3FHkcd0p_xez8vjOjgDI",
@@ -34,15 +35,20 @@ export const db = getFirestore(app);
 export const APP_ID_FIELD = 'default-app-id';
 
 // User Profile Helpers
-export const getUserProfile = async (uid: string) => {
+export const getUserProfile = async (uid: string): Promise<UserProfile | null> => {
   const profileDoc = doc(db, 'artifacts', APP_ID_FIELD, 'users', uid, 'profile', 'info');
   const snap = await getDoc(profileDoc);
-  return snap.exists() ? snap.data() : null;
+  return snap.exists() ? (snap.data() as UserProfile) : null;
 };
 
-export const updateUserAvatar = async (uid: string, base64: string) => {
+export const saveUserProfile = async (uid: string, data: Partial<UserProfile>) => {
   const profileDoc = doc(db, 'artifacts', APP_ID_FIELD, 'users', uid, 'profile', 'info');
-  await setDoc(profileDoc, { avatarBase64: base64 }, { merge: true });
+  await setDoc(profileDoc, data, { merge: true });
+};
+
+// Deprecated wrapper for backward compatibility if needed locally, but better use saveUserProfile
+export const updateUserAvatar = async (uid: string, base64: string) => {
+  return saveUserProfile(uid, { avatarBase64: base64 });
 };
 
 // Measurement Helpers

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   LineChart,
   Line,
@@ -6,32 +6,21 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
-  Legend
+  ResponsiveContainer
 } from 'recharts';
-import { Measurement } from '../types';
+import { Measurement, UserProfile } from '../types';
+import { COLOR_MAP, getRandomColor } from '../constants';
+import { calculateFitnessMetrics } from '../utils/fitness';
 
 interface Props {
   data: Measurement[];
+  userProfile: UserProfile | null;
 }
 
-// Mappa colori fissa per garantire coerenza visiva
-const COLOR_MAP: Record<string, string> = {
-  'Peso': '#4f46e5',      // Indigo
-  'Petto': '#0891b2',     // Cyan
-  'Vita': '#e11d48',      // Rose
-  'Fianchi': '#d97706',   // Amber
-  'Coscia': '#16a34a',    // Green
-  'Bicipite SX': '#8b5cf6', // Violet
-  'Bicipite DX': '#7c3aed', // Darker Violet
-  'Polpaccio': '#ea580c', // Orange
-  'Collo': '#475569',     // Slate
-};
+const MeasurementCharts: React.FC<Props> = ({ data, userProfile }) => {
+  // Stato per gestire la visibilità delle serie (Legend interattiva)
+  const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set());
 
-const getRandomColor = () => '#' + Math.floor(Math.random()*16777215).toString(16);
-
-const MeasurementCharts: React.FC<Props> = ({ data }) => {
-  
   // 1. Preparazione dati per il Grafico Combinato (Unified Chart)
   const unifiedData = useMemo(() => {
     const map = new Map<string, any>();
@@ -95,6 +84,39 @@ const MeasurementCharts: React.FC<Props> = ({ data }) => {
     }));
   }, [data]);
 
+  // 3. Calcolo delle Metriche Attuali (Basate sull'ultima rilevazione)
+  const currentMetrics = useMemo(() => {
+    if (data.length === 0 || !userProfile) return null;
+
+    // Trova la data più recente
+    const sortedDates = [...data].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    const latestDate = sortedDates[0].timestamp;
+    
+    // Filtra gli elementi di quella data
+    const latestItems = data.filter(d => d.timestamp === latestDate);
+    
+    // Mappa valori
+    const valueMap: Record<string, number> = {};
+    latestItems.forEach(i => valueMap[i.name] = i.value);
+
+    return {
+        date: latestDate,
+        metrics: calculateFitnessMetrics(valueMap, userProfile.gender, userProfile.height)
+    };
+  }, [data, userProfile]);
+
+  const toggleSeries = (name: string) => {
+    setHiddenSeries(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) {
+        next.delete(name);
+      } else {
+        next.add(name);
+      }
+      return next;
+    });
+  };
+
   if (data.length === 0) {
     return (
       <div className="col-span-full text-center py-16 bg-white rounded-2xl text-gray-500 shadow-sm border border-gray-100 text-lg">
@@ -113,11 +135,94 @@ const MeasurementCharts: React.FC<Props> = ({ data }) => {
             <i className="fa-solid fa-chart-line text-xl"></i>
           </div>
           <h3 className="text-xl font-bold text-gray-800">Andamento Complessivo</h3>
+          {currentMetrics && (
+            <span className="text-xs text-gray-400 font-semibold ml-auto border border-gray-100 bg-gray-50 px-2 py-1 rounded-lg">
+                Ultimo Agg.: {new Date(currentMetrics.date).toLocaleDateString('it-IT')}
+            </span>
+          )}
+        </div>
+
+        {/* METRICS SUMMARY CARDS */}
+        {currentMetrics && (currentMetrics.metrics.bmi || currentMetrics.metrics.bodyFat || currentMetrics.metrics.whtr) && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+                {currentMetrics.metrics.bmi && (
+                    <div className={`p-4 rounded-2xl border ${currentMetrics.metrics.bmi.color} bg-opacity-30 flex items-center gap-4`}>
+                        <div className="w-12 h-12 rounded-full bg-white bg-opacity-60 flex items-center justify-center text-xl shadow-sm">
+                            <i className="fa-solid fa-weight-scale"></i>
+                        </div>
+                        <div>
+                            <div className="text-xs font-bold uppercase opacity-70">BMI (Indice Massa Corporea)</div>
+                            <div className="text-2xl font-extrabold flex items-baseline gap-2">
+                                {currentMetrics.metrics.bmi.value}
+                                <span className="text-sm font-semibold opacity-80">{currentMetrics.metrics.bmi.status}</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                
+                {currentMetrics.metrics.bodyFat && (
+                    <div className="p-4 rounded-2xl border border-purple-200 bg-purple-50 text-purple-700 flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center text-xl shadow-sm text-purple-600">
+                            <i className="fa-solid fa-droplet"></i>
+                        </div>
+                        <div>
+                            <div className="text-xs font-bold uppercase opacity-70 text-purple-600">Massa Grassa (Stimata)</div>
+                            <div className="text-2xl font-extrabold flex items-baseline gap-2">
+                                {currentMetrics.metrics.bodyFat.value}%
+                                <span className="text-xs font-normal opacity-70 bg-purple-100 px-1.5 py-0.5 rounded">Navy Method</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {currentMetrics.metrics.whtr && (
+                    <div className={`p-4 rounded-2xl border ${currentMetrics.metrics.whtr.color} bg-opacity-30 flex items-center gap-4`}>
+                        <div className="w-12 h-12 rounded-full bg-white bg-opacity-60 flex items-center justify-center text-xl shadow-sm">
+                            <i className="fa-solid fa-ruler"></i>
+                        </div>
+                        <div>
+                            <div className="text-xs font-bold uppercase opacity-70">Rapporto Vita/Altezza</div>
+                            <div className="text-2xl font-extrabold flex items-baseline gap-2">
+                                {currentMetrics.metrics.whtr.value}
+                                <span className="text-sm font-semibold opacity-80">{currentMetrics.metrics.whtr.status}</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+        )}
+
+        {/* CUSTOM LEGEND (HTML puro per responsiveness perfetta) */}
+        <div className="flex flex-wrap gap-2 mb-6 select-none border-t border-gray-100 pt-6">
+          {availableMeasurements.map((key) => {
+            const isHidden = hiddenSeries.has(key);
+            const color = COLOR_MAP[key] || '#64748b'; // Fallback color
+            
+            return (
+              <button
+                key={key}
+                onClick={() => toggleSeries(key)}
+                className={`
+                  flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all duration-200
+                  ${isHidden 
+                    ? 'bg-gray-50 text-gray-400 border-gray-200 opacity-70 hover:opacity-100' 
+                    : 'bg-white text-gray-700 border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-200 transform hover:-translate-y-0.5'
+                  }
+                `}
+              >
+                <span 
+                  className={`w-3 h-3 rounded-full transition-colors ${isHidden ? 'bg-gray-300' : ''}`}
+                  style={!isHidden ? { backgroundColor: color } : {}}
+                ></span>
+                {key}
+              </button>
+            );
+          })}
         </div>
         
         <div className="h-[400px] w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={unifiedData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+            <LineChart data={unifiedData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
               <XAxis 
                 dataKey="displayDate" 
@@ -137,23 +242,19 @@ const MeasurementCharts: React.FC<Props> = ({ data }) => {
                 labelStyle={{ color: '#64748b', fontSize: '14px', fontWeight: 700, marginBottom: '8px' }}
                 itemStyle={{ fontSize: '14px', fontWeight: 'bold', padding: '2px 0' }}
               />
-              <Legend 
-                verticalAlign="top" 
-                height={36} 
-                iconType="circle"
-                wrapperStyle={{ paddingBottom: '20px', fontSize: '14px', fontWeight: 500 }}
-              />
               
               {availableMeasurements.map((key) => (
                 <Line
                   key={key}
                   type="monotone"
                   dataKey={key}
+                  hide={hiddenSeries.has(key)}
                   stroke={COLOR_MAP[key] || getRandomColor()}
                   strokeWidth={3}
                   dot={{ r: 4, strokeWidth: 2 }}
                   activeDot={{ r: 8 }}
                   connectNulls
+                  isAnimationActive={false}
                 />
               ))}
             </LineChart>

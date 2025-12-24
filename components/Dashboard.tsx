@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { User, signOut } from 'firebase/auth';
 import { onSnapshot, query, orderBy } from 'firebase/firestore';
 import { auth, getMeasurementsCollection, addMeasurement, updateMeasurement, deleteMeasurement, getUserProfile } from '../services/firebase';
-import { Measurement, StatusMessage } from '../types';
+import { Measurement, StatusMessage, UserProfile } from '../types';
 import MeasurementCharts from './MeasurementCharts';
 import MeasurementTable from './MeasurementTable';
 import MeasurementModal from './MeasurementModal';
@@ -16,7 +16,9 @@ const Dashboard: React.FC<Props> = ({ user }) => {
   const [data, setData] = useState<Measurement[]>([]);
   const [status, setStatus] = useState<StatusMessage>({ type: 'loading', text: 'Sincronizzazione...' });
   const [view, setView] = useState<'dashboard' | 'profile'>('dashboard');
-  const [avatar, setAvatar] = useState<string | undefined>(undefined);
+  
+  // Profile State
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -44,14 +46,14 @@ const Dashboard: React.FC<Props> = ({ user }) => {
       }
     );
     
-    loadAvatar();
+    loadProfile();
 
     return () => unsubscribe();
   }, [user.uid]);
 
-  const loadAvatar = async () => {
+  const loadProfile = async () => {
     const profile = await getUserProfile(user.uid);
-    if (profile?.avatarBase64) setAvatar(profile.avatarBase64);
+    if (profile) setUserProfile(profile);
   };
 
   const handleSaveMeasurement = async (date: string, measurements: Record<string, string>, existingItems?: Measurement[]) => {
@@ -110,7 +112,7 @@ const Dashboard: React.FC<Props> = ({ user }) => {
   };
 
   if (view === 'profile') {
-    return <Profile user={user} avatarSrc={avatar} onClose={() => setView('dashboard')} onAvatarUpdate={loadAvatar} />;
+    return <Profile user={user} avatarSrc={userProfile?.avatarBase64} onClose={() => setView('dashboard')} onProfileUpdate={loadProfile} />;
   }
 
   return (
@@ -136,7 +138,7 @@ const Dashboard: React.FC<Props> = ({ user }) => {
             onClick={() => setView('profile')}
           >
             <div className="w-12 h-12 rounded-full bg-indigo-100 border-2 border-indigo-200 overflow-hidden flex items-center justify-center text-indigo-600 shadow-sm text-xl">
-              {avatar ? <img src={avatar} className="w-full h-full object-cover" alt="User" /> : <i className="fa-solid fa-user"></i>}
+              {userProfile?.avatarBase64 ? <img src={userProfile.avatarBase64} className="w-full h-full object-cover" alt="User" /> : <i className="fa-solid fa-user"></i>}
             </div>
             <div className="hidden sm:block">
               <div className="text-xs uppercase font-extrabold text-gray-400 tracking-wider mb-0.5">Account</div>
@@ -162,7 +164,21 @@ const Dashboard: React.FC<Props> = ({ user }) => {
       </div>
 
       <div className="max-w-[98%] mx-auto px-2 sm:px-4">
-        <MeasurementCharts data={data} />
+        {/* Missing Profile Data Warning */}
+        {(!userProfile?.height || !userProfile?.gender) && (
+          <div className="mb-6 bg-orange-50 border border-orange-200 p-4 rounded-2xl flex items-center gap-4 shadow-sm animate-in fade-in slide-in-from-top-4 cursor-pointer" onClick={() => setView('profile')}>
+            <div className="bg-orange-100 text-orange-600 p-3 rounded-xl">
+              <i className="fa-solid fa-clipboard-list text-xl"></i>
+            </div>
+            <div className="flex-1">
+              <h4 className="font-bold text-gray-800">Completa il tuo profilo!</h4>
+              <p className="text-sm text-gray-600">Aggiungi Altezza e Sesso per sbloccare le statistiche avanzate (BMI, Massa Grassa, etc.).</p>
+            </div>
+            <i className="fa-solid fa-chevron-right text-orange-400"></i>
+          </div>
+        )}
+
+        <MeasurementCharts data={data} userProfile={userProfile} />
         
         <div className="mb-5 flex items-center gap-3 px-2 mt-10">
           <div className="bg-indigo-100 p-2 rounded-lg text-indigo-600">
@@ -173,6 +189,7 @@ const Dashboard: React.FC<Props> = ({ user }) => {
         
         <MeasurementTable 
           data={data} 
+          userProfile={userProfile}
           onEdit={(date, items) => {
             setEditingDate(date);
             setEditingItems(items);
