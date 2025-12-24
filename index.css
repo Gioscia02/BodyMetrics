@@ -27,3 +27,17 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8; 
 }
+
+/* 
+   Fix per l'Autofill dei browser (Chrome, Safari, etc.)
+   Forza lo sfondo bianco e il testo scuro anche quando il browser
+   prova a colorare il campo di giallo/azzurro.
+*/
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus, 
+input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 30px white inset !important;
+    -webkit-text-fill-color: #1f2937 !important;
+    transition: background-color 5000s ease-in-out 0s;
+}

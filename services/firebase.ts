@@ -1,4 +1,4 @@
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { 
   getFirestore, 
@@ -21,11 +21,17 @@ const firebaseConfig = {
     measurementId: "G-JC4BC046R4"
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+// Initialize Firebase with Singleton Pattern
+// Questo controllo è fondamentale per Vite/HMR: usa l'istanza esistente se c'è.
+const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+
+// Ottieni l'istanza Auth.
+// La persistenza è 'browserLocalPersistence' di default.
+// Non chiamiamo setPersistence() qui per evitare di resettare lo stato durante i reload del codice.
 export const auth = getAuth(app);
+
 export const db = getFirestore(app);
-export const APP_ID_FIELD = 'default-app-id'; // Matching the logic from original code
+export const APP_ID_FIELD = 'default-app-id';
 
 // User Profile Helpers
 export const getUserProfile = async (uid: string) => {
