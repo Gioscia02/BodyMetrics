@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { updatePassword, User } from 'firebase/auth';
 import { saveUserProfile, getUserProfile } from '../services/firebase';
 import { UserProfile } from '../types';
+import { MEASUREMENT_TYPES } from '../constants';
 
 interface Props {
   user: User;
@@ -19,6 +20,8 @@ const Profile: React.FC<Props> = ({ user, avatarSrc, onClose, onProfileUpdate })
   const [height, setHeight] = useState<string>('');
   const [gender, setGender] = useState<'male' | 'female' | ''>('');
   const [birthDate, setBirthDate] = useState<string>('');
+  const [goals, setGoals] = useState<Record<string, string>>({});
+  
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -28,6 +31,11 @@ const Profile: React.FC<Props> = ({ user, avatarSrc, onClose, onProfileUpdate })
         if (data.height) setHeight(data.height.toString());
         if (data.gender) setGender(data.gender);
         if (data.birthDate) setBirthDate(data.birthDate);
+        if (data.goals) {
+          const goalsStr: Record<string, string> = {};
+          Object.entries(data.goals).forEach(([k, v]) => goalsStr[k] = v.toString());
+          setGoals(goalsStr);
+        }
       }
     };
     fetchInfo();
@@ -72,6 +80,10 @@ const Profile: React.FC<Props> = ({ user, avatarSrc, onClose, onProfileUpdate })
     reader.readAsDataURL(file);
   };
 
+  const handleGoalChange = (key: string, value: string) => {
+    setGoals(prev => ({ ...prev, [key]: value }));
+  };
+
   const handleSaveProfile = async () => {
     setIsSaving(true);
     try {
@@ -79,10 +91,20 @@ const Profile: React.FC<Props> = ({ user, avatarSrc, onClose, onProfileUpdate })
       if (height) updates.height = parseFloat(height);
       if (gender) updates.gender = gender;
       if (birthDate) updates.birthDate = birthDate;
+      
+      // Process Goals
+      const processedGoals: Record<string, number> = {};
+      Object.entries(goals).forEach(([k, v]) => {
+        const strVal = v as string;
+        if (strVal && !isNaN(parseFloat(strVal))) {
+          processedGoals[k] = parseFloat(strVal);
+        }
+      });
+      updates.goals = processedGoals;
 
       await saveUserProfile(user.uid, updates);
       onProfileUpdate(); // Trigger refresh in parent
-      alert("Dati salvati correttamente!");
+      alert("Dati e Obiettivi salvati correttamente!");
     } catch (e) {
       alert("Errore salvataggio dati.");
     } finally {
@@ -130,6 +152,7 @@ const Profile: React.FC<Props> = ({ user, avatarSrc, onClose, onProfileUpdate })
         <div className="text-sm font-semibold text-gray-500 mb-8">{user.email}</div>
 
         <div className="text-left space-y-6">
+            {/* DATI FISICI */}
             <div>
               <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600">
@@ -175,18 +198,56 @@ const Profile: React.FC<Props> = ({ user, avatarSrc, onClose, onProfileUpdate })
                       />
                   </div>
               </div>
-              
-              <button 
-                onClick={handleSaveProfile}
-                disabled={isSaving}
-                className="mt-4 w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition-all shadow-md active:scale-[0.98] disabled:opacity-70"
-              >
-                {isSaving ? <i className="fa-solid fa-circle-notch fa-spin"></i> : 'Salva Dati Fisici'}
-              </button>
             </div>
 
             <div className="border-t border-gray-100 my-6"></div>
 
+            {/* OBIETTIVI */}
+            <div>
+              <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center text-amber-600">
+                    <i className="fa-solid fa-bullseye text-sm"></i>
+                </div>
+                I tuoi Obiettivi
+                <span className="text-xs font-normal text-gray-400 ml-auto">Dove vuoi arrivare?</span>
+              </h3>
+
+              <div className="grid grid-cols-2 gap-4">
+                {MEASUREMENT_TYPES.map(type => (
+                  <div key={type.key}>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1 truncate">{type.label}</label>
+                    <div className="relative">
+                        <input 
+                          type="number" 
+                          step={type.step}
+                          placeholder="Target"
+                          value={goals[type.key] || ''}
+                          onChange={(e) => handleGoalChange(type.key, e.target.value)}
+                          className="w-full pl-3 pr-3 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-4 focus:ring-amber-500/10 focus:border-amber-500 outline-none transition-all text-sm"
+                        />
+                         {goals[type.key] && (
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500">
+                                <i className="fa-solid fa-check text-xs"></i>
+                            </div>
+                        )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <button 
+              onClick={handleSaveProfile}
+              disabled={isSaving}
+              className="mt-6 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-indigo-200 hover:shadow-indigo-300 active:scale-[0.98] disabled:opacity-70 flex justify-center items-center gap-2"
+            >
+              {isSaving ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <i className="fa-solid fa-floppy-disk"></i>}
+              Salva Tutto
+            </button>
+
+            <div className="border-t border-gray-100 my-6"></div>
+
+            {/* SICUREZZA */}
             <div>
               <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-600">

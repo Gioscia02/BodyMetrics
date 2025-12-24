@@ -15,6 +15,7 @@ export interface UserProfile {
   height?: number; // in cm
   gender?: 'male' | 'female';
   birthDate?: string; // YYYY-MM-DD
+  goals?: Record<string, number>; // Key: Measurement Name (e.g. "Peso"), Value: Target
 }
 
 export interface GroupedMeasurement {

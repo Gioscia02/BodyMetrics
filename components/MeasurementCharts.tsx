@@ -6,7 +6,9 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer
+  ResponsiveContainer,
+  ReferenceLine,
+  Label
 } from 'recharts';
 import { Measurement, UserProfile } from '../types';
 import { COLOR_MAP, getRandomColor } from '../constants';
@@ -15,6 +17,12 @@ import { calculateFitnessMetrics } from '../utils/fitness';
 interface Props {
   data: Measurement[];
   userProfile: UserProfile | null;
+}
+
+interface ChartDataPoint {
+  date: string;
+  fullDate: string;
+  value: number;
 }
 
 const MeasurementCharts: React.FC<Props> = ({ data, userProfile }) => {
@@ -50,7 +58,7 @@ const MeasurementCharts: React.FC<Props> = ({ data, userProfile }) => {
 
   // 2. Preparazione dati per i Piccoli Grafici (Small Multiples) - Logica esistente mantenuta e ottimizzata
   const smallCharts = useMemo(() => {
-    const groups: Record<string, { display: string; data: any[] }> = {};
+    const groups: Record<string, { display: string; data: ChartDataPoint[] }> = {};
 
     data.forEach((d) => {
       const rawName = d.name.trim();
@@ -241,6 +249,10 @@ const MeasurementCharts: React.FC<Props> = ({ data, userProfile }) => {
                 contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)', padding: '12px' }}
                 labelStyle={{ color: '#64748b', fontSize: '14px', fontWeight: 700, marginBottom: '8px' }}
                 itemStyle={{ fontSize: '14px', fontWeight: 'bold', padding: '2px 0' }}
+                formatter={(value: number, name: string) => {
+                    const unit = String(name).toLowerCase() === 'peso' ? 'kg' : 'cm';
+                    return [`${value} ${unit}`, name];
+                }}
               />
               
               {availableMeasurements.map((key) => (
@@ -269,16 +281,102 @@ const MeasurementCharts: React.FC<Props> = ({ data, userProfile }) => {
           {smallCharts.map(({ type, data: chartData }) => {
             const unit = type.toLowerCase().includes('peso') ? 'kg' : 'cm';
             const color = COLOR_MAP[type] || '#4f46e5';
+            
+            // Goal Logic & Domain Calculation
+            const goalValue = userProfile?.goals?.[type];
+            let progressElement = null;
+            
+            // Dati valori
+            const dataValues = chartData.map(d => d.value);
+            const dataMin = Math.min(...dataValues);
+            const dataMax = Math.max(...dataValues);
+            
+            // Calcolo limiti base
+            let yMin = dataMin;
+            let yMax = dataMax;
+
+            if (typeof goalValue === 'number') {
+                yMin = Math.min(yMin, goalValue);
+                yMax = Math.max(yMax, goalValue);
+            }
+
+            // Padding del 15% sul range totale
+            const range = Math.max(yMax - yMin, 1); // Evita divisione per 0 o range nullo
+            const padding = range * 0.15;
+            
+            // Assicuriamo che il minimo non sia mai negativo
+            const domainMin = Math.max(0, Math.floor(yMin - padding));
+            const domainMax = Math.ceil(yMax + padding);
+
+            // --- NUOVA LOGICA: Ticks Basati Esattamente sui Dati e sul Target ---
+            // 1. Raccogli tutti i valori unici delle misurazioni
+            let finalTicks: number[] = Array.from(new Set(chartData.map(d => d.value)));
+            
+            // 2. Aggiungi il Target (se esiste)
+            if (typeof goalValue === 'number') {
+                finalTicks.push(goalValue);
+            }
+            
+            // 3. Rimuovi duplicati (Set) e ordina
+            finalTicks = Array.from(new Set(finalTicks)).sort((a: number, b: number) => a - b);
+
+            // 4. Se ci sono troppi valori (es. > 12), il grafico diventa illeggibile.
+            // In questo caso, filtriamo mantenendo sempre: Minimo, Massimo, Ultimo Valore, Target
+            // e campionando gli altri.
+            if (finalTicks.length > 12) {
+                const prioritySet = new Set([
+                     chartData.length > 0 ? Math.min(...chartData.map(d => d.value)) : 0,
+                     chartData.length > 0 ? Math.max(...chartData.map(d => d.value)) : 0,
+                     chartData.length > 0 ? chartData[chartData.length - 1].value : 0
+                ]);
+                if (typeof goalValue === 'number') prioritySet.add(goalValue);
+
+                finalTicks = finalTicks.filter((val, index) => {
+                    // Mantieni sempre le priorità (Min, Max, Ultimo, Goal)
+                    if (prioritySet.has(val)) return true;
+                    
+                    // Campionamento: tieni un valore ogni tot
+                    const skipRate = Math.ceil(finalTicks.length / 8);
+                    return index % skipRate === 0;
+                });
+            }
+            // ------------------------------------------------------------------
+
+            if (typeof goalValue === 'number' && chartData.length > 0) {
+                const currentVal = chartData[chartData.length - 1].value;
+                const diff = currentVal - goalValue;
+                
+                const diffFormatted = Math.abs(diff).toFixed(1);
+                const reached = Math.abs(diff) < 0.1;
+                
+                progressElement = (
+                    <div className="mt-1 flex items-center justify-between text-xs font-medium">
+                       <span className={`flex items-center gap-1 ${reached ? 'text-emerald-600' : 'text-amber-600'}`}>
+                            <i className={`fa-solid ${reached ? 'fa-check-circle' : 'fa-bullseye'}`}></i>
+                            {reached ? 'Raggiunto!' : `Target: ${goalValue}`}
+                       </span>
+                       {!reached && (
+                           <span className="text-gray-400">
+                               {diff > 0 ? '-' : '+'}{diffFormatted}{unit}
+                           </span>
+                       )}
+                    </div>
+                );
+            }
 
             return (
-              <div key={type} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col h-64 transition-all hover:shadow-md hover:border-indigo-100">
-                <h4 className="text-sm font-extrabold uppercase tracking-wider text-gray-700 mb-2 flex justify-between items-center">
-                  {type}
-                  <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md">{unit}</span>
-                </h4>
+              <div key={type} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col h-72 transition-all hover:shadow-md hover:border-indigo-100 relative overflow-hidden">
+                <div className="mb-2">
+                    <h4 className="text-sm font-extrabold uppercase tracking-wider text-gray-700 flex justify-between items-center">
+                    {type}
+                    <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md">{unit}</span>
+                    </h4>
+                    {progressElement}
+                </div>
+
                 <div className="flex-grow w-full min-h-0">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <LineChart data={chartData} margin={{ top: 30, right: 10, left: 0, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                       <XAxis 
                         dataKey="date" 
@@ -289,15 +387,57 @@ const MeasurementCharts: React.FC<Props> = ({ data, userProfile }) => {
                         interval="preserveStartEnd"
                       />
                       <YAxis 
-                        domain={['dataMin - 2', 'dataMax + 2']} 
-                        tick={{ fontSize: 10, fill: '#94a3b8' }}
+                        domain={[domainMin, domainMax]} 
+                        ticks={finalTicks}
+                        tick={(props: any) => {
+                            const { x, y, payload } = props;
+                            // Controlla se questo tick è il goal (con una piccola tolleranza per float)
+                            const val = Number(payload.value);
+                            const goal = goalValue;
+                            const isGoal = typeof goal === 'number' && Math.abs(val - goal) < 0.01;
+                            
+                            return (
+                                <text 
+                                    x={x} 
+                                    y={y} 
+                                    dy={4} 
+                                    textAnchor="end" 
+                                    fill={isGoal ? "#10b981" : "#64748b"} 
+                                    fontSize={11}
+                                    fontWeight={isGoal ? 700 : 500}
+                                >
+                                    {payload.value}
+                                </text>
+                            );
+                        }}
                         axisLine={false}
                         tickLine={false}
-                        width={30}
+                        width={35}
                       />
                       <Tooltip
                         contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', fontSize: '12px' }}
+                        formatter={(value: number) => [`${value} ${unit}`, '']}
+                        separator=""
                       />
+                      {/* Goal Line */}
+                      {typeof goalValue === 'number' && (
+                          <ReferenceLine 
+                            y={goalValue} 
+                            stroke="#10b981" 
+                            strokeDasharray="4 2" 
+                            strokeWidth={2} 
+                          >
+                             <Label 
+                                value="TARGET" 
+                                position="insideTopRight" 
+                                fill="#10b981" 
+                                fontSize={10} 
+                                fontWeight={800}
+                                offset={5}
+                            />
+                          </ReferenceLine>
+                      )}
+                      
                       <Line
                         type="monotone"
                         dataKey="value"
