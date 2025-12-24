@@ -1,7 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* 
-   Global Styles
-   Most styling is handled by Tailwind CSS classes in the TSX files.
-   This file is reserved for custom overrides or third-party library tweaks.
+   Custom Styles
 */
 
 body {
